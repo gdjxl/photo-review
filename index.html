@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>专业摄影照片点评</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: "微软雅黑", sans-serif; }
+        body { max-width: 600px; margin: 20px auto; padding: 0 15px; background: #f0f2f5; }
+        .box { background: #fff; border-radius: 12px; padding: 25px; box-shadow: 0 2px 12px rgba(0,0,0,0.1); }
+        .title { text-align: center; font-size: 24px; color: #222; margin-bottom: 10px; }
+        .tip { text-align: center; color: #666; margin-bottom: 30px; font-size: 14px; }
+        .btn { width: 100%; padding: 14px; border: none; border-radius: 8px; font-size: 16px; margin: 10px 0; cursor: pointer; }
+        .blue { background: #007AFF; color: #fff; }
+        .blue:disabled { background: #999; cursor: not-allowed; }
+        #result { margin-top: 20px; padding: 18px; background: #f8f9fa; border-radius: 8px; line-height: 1.7; white-space: pre-wrap; color: #333; min-height: 100px; }
+        #file { display: none; }
+    </style>
+</head>
+<body>
+    <div class="box">
+        <h2 class="title">专业摄影照片点评</h2>
+        <p class="tip">上传照片即可获得专业分析与改进建议</p>
+        
+        <button class="btn blue" id="testBtn">测试API连接</button>
+        <button class="btn blue" id="uploadBtn">上传照片点评</button>
+        <input type="file" id="file" accept="image/*">
+        
+        <div id="result">结果将显示在这里...</div>
+    </div>
+
+    <script>
+        // 你的配置（已填好）
+        const API_URL = "https://api.coze.cn/v3/chat";
+        const BOT_ID = "7634150305420460038";
+        const TOKEN = "pat_7w91Hu6ZExIY5Iky9RPLYesZJY6tRc05FNXL5coZjXrvii8uLYw2rlgl7kKBfeKC";
+
+        const testBtn = document.getElementById('testBtn');
+        const uploadBtn = document.getElementById('uploadBtn');
+        const fileInput = document.getElementById('file');
+        const resultDiv = document.getElementById('result');
+
+        // 测试API
+        testBtn.onclick = async () => {
+            testBtn.disabled = true;
+            testBtn.textContent = "测试中...";
+            resultDiv.textContent = "";
+
+            try {
+                const response = await fetch(API_URL, {
+                    method: 'POST',
+                    headers: {
+                        "Authorization": "Bearer " + TOKEN,
+                        "Content-Type": "application/json"
+                    },
+                    body: JSON.stringify({
+                        bot_id: BOT_ID,
+                        user_id: "test_user",
+                        stream: true,
+                        additional_messages: [{
+                            content: "你好",
+                            content_type: "text",
+                            role: "user",
+                            type: "question"
+                        }]
+                    })
+                });
+
+                const streamReader = response.body.getReader();
+                const decoder = new TextDecoder();
+                let text = "";
+
+                while (true) {
+                    const { done, value } = await streamReader.read();
+                    if (done) break;
+                    
+                    const chunk = decoder.decode(value);
+                    const lines = chunk.split("\n\n");
+                    
+                    for (const line of lines) {
+                        if (line.startsWith("data:")) {
+                            const data = JSON.parse(line.slice(5));
+                            if (data.event === "conversation.message.delta") {
+                                text += data.message.content;
+                                resultDiv.textContent = text;
+                            }
+                        }
+                    }
+                }
+            } catch (err) {
+                resultDiv.textContent = "错误：" + err.message;
+            } finally {
+                testBtn.disabled = false;
+                testBtn.textContent = "测试API连接";
+            }
+        };
+
+        // 上传照片点评
+        uploadBtn.onclick = () => fileInput.click();
+        fileInput.onchange = async (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            if (!file.type.includes('image/') || file.size > 2*1024*1024) {
+                resultDiv.textContent = "请上传≤2MB的JPG/PNG图片";
+                return;
+            }
+
+            uploadBtn.disabled = true;
+            uploadBtn.textContent = "分析照片中...";
+            resultDiv.textContent = "";
+
+            const imgReader = new FileReader();
+            imgReader.readAsDataURL(file);
+            imgReader.onload = async () => {
+                try {
+                    const response = await fetch(API_URL, {
+                        method: 'POST',
+                        headers: {
+                            "Authorization": "Bearer " + TOKEN,
+                            "Content-Type": "application/json"
+                        },
+                        body: JSON.stringify({
+                            bot_id: BOT_ID,
+                            user_id: "test_user",
+                            stream: true,
+                            additional_messages: [{
+                                content: imgReader.result,
+                                content_type: "image",
+                                role: "user",
+                                type: "question"
+                            }]
+                        })
+                    });
+
+                    const streamReader = response.body.getReader();
+                    const decoder = new TextDecoder();
+                    let text = "";
+
+                    while (true) {
+                        const { done, value } = await streamReader.read();
+                        if (done) break;
+                        
+                        const chunk = decoder.decode(value);
+                        const lines = chunk.split("\n\n");
+                        
+                        for (const line of lines) {
+                            if (line.startsWith("data:")) {
+                                const data = JSON.parse(line.slice(5));
+                                if (data.event === "conversation.message.delta") {
+                                    text += data.message.content;
+                                    resultDiv.textContent = text;
+                                }
+                            }
+                        }
+                    }
+                } catch (err) {
+                    resultDiv.textContent = "错误：" + err.message;
+                } finally {
+                    uploadBtn.disabled = false;
+                    uploadBtn.textContent = "上传照片点评";
+                }
+            };
+        };
+    </script>
+</body>
+</html>
